@@ -3,7 +3,4 @@
 #   --namespace hello-world-dev --create-namespace
 
 replicaCount: 1
-image:
-  tag: sha-7042e6c
-  repository: ghcr.io/rcarlson-devops/go-app-template
 environment: dev
