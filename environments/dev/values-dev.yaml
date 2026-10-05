@@ -4,5 +4,6 @@
 
 replicaCount: 1
 image:
-  tag:
+  tag: sha-7042e6c
+  repository: ghcr.io/rcarlson-devops/go-app-template
 environment: dev
