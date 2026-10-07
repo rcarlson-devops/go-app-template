@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -15,6 +16,20 @@ type Config struct {
 	Version         string
 	ShutdownTimeout time.Duration
 	PreStopDelay    time.Duration
+
+	// Database settings. The chart supplies DB_USER, DB_PASSWORD and DB_NAME
+	// from the Kubernetes Secret db-credentials and computes DB_HOST. They
+	// are optional as a group: all empty means "no database configured".
+	DBHost     string
+	DBUser     string
+	DBPassword string
+	DBName     string
+}
+
+// DatabaseConfigured reports whether database settings were provided.
+// LoadConfig guarantees they are either all set or all empty.
+func (c Config) DatabaseConfigured() bool {
+	return c.DBHost != ""
 }
 
 var validEnvironments = map[string]bool{
@@ -65,6 +80,30 @@ func LoadConfig(getenv func(string) string, version string) (Config, error) {
 	// wrong environment in every log line and health check.
 	if cfg.Environment != "unknown" && !validEnvironments[cfg.Environment] {
 		return cfg, fmt.Errorf("invalid ENVIRONMENT %q: must be one of dev, staging, prod", cfg.Environment)
+	}
+
+	// Database settings are optional as a group. None set is fine (local
+	// runs, tests). Some set but not all is a configuration mistake, so it
+	// fails at startup. The error names the missing variables only and never
+	// includes any value, so the password cannot leak into logs.
+	cfg.DBHost = getenv("DB_HOST")
+	cfg.DBUser = getenv("DB_USER")
+	cfg.DBPassword = getenv("DB_PASSWORD")
+	cfg.DBName = getenv("DB_NAME")
+
+	var missing []string
+	for _, f := range []struct{ name, value string }{
+		{"DB_HOST", cfg.DBHost},
+		{"DB_USER", cfg.DBUser},
+		{"DB_PASSWORD", cfg.DBPassword},
+		{"DB_NAME", cfg.DBName},
+	} {
+		if f.value == "" {
+			missing = append(missing, f.name)
+		}
+	}
+	if len(missing) > 0 && len(missing) < 4 {
+		return cfg, fmt.Errorf("incomplete database configuration: missing %s (set all of DB_HOST, DB_USER, DB_PASSWORD, DB_NAME, or none)", strings.Join(missing, ", "))
 	}
 
 	return cfg, nil

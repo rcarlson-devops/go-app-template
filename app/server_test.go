@@ -2,7 +2,9 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -181,5 +183,78 @@ func TestFullServerIntegration(t *testing.T) {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+}
+
+func getDB(t *testing.T, srv *Server) (*httptest.ResponseRecorder, dbResponse) {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, "/db", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+	var body dbResponse
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	return rec, body
+}
+
+func TestHandleDB_NotConfigured(t *testing.T) {
+	srv, _ := testServer(t, "dev") // no database settings, so no checker
+	rec, body := getDB(t, srv)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if body.Configured || body.Connected {
+		t.Errorf("got %+v, want configured=false connected=false", body)
+	}
+}
+
+func TestHandleDB_Connected(t *testing.T) {
+	srv, _ := testServer(t, "dev")
+	srv.dbCheck = func(ctx context.Context) (string, error) { return "app", nil }
+	rec, body := getDB(t, srv)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if !body.Configured || !body.Connected || body.Database != "app" {
+		t.Errorf("got %+v, want configured=true connected=true database=app", body)
+	}
+}
+
+func TestHandleDB_FailureDoesNotLeakError(t *testing.T) {
+	srv, logBuf := testServer(t, "dev")
+	srv.dbCheck = func(ctx context.Context) (string, error) {
+		return "", errors.New("dial tcp 10.0.0.1:5432: connection refused")
+	}
+	rec, body := getDB(t, srv)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusServiceUnavailable)
+	}
+	if !body.Configured || body.Connected {
+		t.Errorf("got %+v, want configured=true connected=false", body)
+	}
+	if strings.Contains(body.Error, "10.0.0.1") {
+		t.Errorf("response must not contain the underlying error, got %q", body.Error)
+	}
+	if !strings.Contains(logBuf.String(), "database check failed") {
+		t.Errorf("expected the failure to be logged, got: %s", logBuf.String())
+	}
+}
+
+// A database outage must never take the pod out of rotation.
+func TestReadiness_IndependentOfDatabase(t *testing.T) {
+	srv, _ := testServer(t, "dev")
+	srv.dbCheck = func(ctx context.Context) (string, error) {
+		return "", errors.New("database is down")
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("readiness status = %d, want %d even when the database is down", rec.Code, http.StatusOK)
 	}
 }

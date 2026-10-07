@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -14,6 +15,11 @@ type Server struct {
 	cfg    Config
 	logger *slog.Logger
 	ready  atomic.Bool
+
+	// dbCheck connects to the database and returns its name. It is nil when
+	// no database is configured. It is a field (rather than a direct call)
+	// so tests can replace it with a fake and never need a real database.
+	dbCheck func(ctx context.Context) (string, error)
 }
 
 // NewServer constructs a Server that reports ready immediately. Call
@@ -22,6 +28,9 @@ type Server struct {
 func NewServer(cfg Config, logger *slog.Logger) *Server {
 	s := &Server{cfg: cfg, logger: logger}
 	s.ready.Store(true)
+	if cfg.DatabaseConfigured() {
+		s.dbCheck = newPostgresChecker(cfg)
+	}
 	return s
 }
 
@@ -36,6 +45,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("/healthz", s.handleLiveness)
 	mux.HandleFunc("/readyz", s.handleReadiness)
 	mux.HandleFunc("/internal/prestop", s.handlePreStop)
+	mux.HandleFunc("/db", s.handleDB)
 	return s.withLogging(mux)
 }
 
@@ -108,6 +118,33 @@ func (s *Server) handlePreStop(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(s.cfg.PreStopDelay)
 	}
 	w.WriteHeader(http.StatusOK)
+}
+
+type dbResponse struct {
+	Configured bool   `json:"configured"`
+	Connected  bool   `json:"connected"`
+	Database   string `json:"database,omitempty"`
+	Error      string `json:"error,omitempty"`
+}
+
+// handleDB reports whether the app can reach its database. It is
+// deliberately NOT part of /readyz: if it were, a database outage would pull
+// every pod out of rotation. The connection is made on request (lazily), so
+// the app starts fine even while the database is still being created. The
+// underlying error is logged but not returned to the caller, because
+// connection errors can contain host and user details.
+func (s *Server) handleDB(w http.ResponseWriter, r *http.Request) {
+	if s.dbCheck == nil {
+		writeJSON(w, http.StatusOK, dbResponse{Configured: false})
+		return
+	}
+	name, err := s.dbCheck(r.Context())
+	if err != nil {
+		s.logger.Error("database check failed", "error", err)
+		writeJSON(w, http.StatusServiceUnavailable, dbResponse{Configured: true, Error: "connection failed"})
+		return
+	}
+	writeJSON(w, http.StatusOK, dbResponse{Configured: true, Connected: true, Database: name})
 }
 
 type statusRecorder struct {

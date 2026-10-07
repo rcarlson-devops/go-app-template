@@ -39,6 +39,7 @@ func main() {
 			"version", cfg.Version,
 			"environment", cfg.Environment,
 			"shutdown_timeout", cfg.ShutdownTimeout.String(),
+			"database_configured", cfg.DatabaseConfigured(),
 		)
 		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			serverErr <- err
@@ -71,4 +72,3 @@ func main() {
 	}
 	logger.Info("shutdown complete")
 }
-// pickup-time test

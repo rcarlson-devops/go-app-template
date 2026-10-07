@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -113,5 +114,50 @@ func TestLoadConfig(t *testing.T) {
 				t.Errorf("Version = %q, want %q", cfg.Version, "test-version")
 			}
 		})
+	}
+}
+
+func TestLoadConfigDatabaseAllSet(t *testing.T) {
+	cfg, err := LoadConfig(fakeGetenv(map[string]string{
+		"DB_HOST":     "postgres-db-rw.x-db.svc.cluster.local",
+		"DB_USER":     "app",
+		"DB_PASSWORD": "secret-value",
+		"DB_NAME":     "app",
+	}), "test")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !cfg.DatabaseConfigured() {
+		t.Error("expected DatabaseConfigured to be true")
+	}
+	if cfg.DBHost == "" || cfg.DBUser != "app" || cfg.DBPassword != "secret-value" || cfg.DBName != "app" {
+		t.Errorf("database fields not loaded correctly")
+	}
+}
+
+func TestLoadConfigDatabaseNoneSet(t *testing.T) {
+	cfg, err := LoadConfig(fakeGetenv(map[string]string{}), "test")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.DatabaseConfigured() {
+		t.Error("expected DatabaseConfigured to be false")
+	}
+}
+
+func TestLoadConfigDatabasePartiallySet(t *testing.T) {
+	_, err := LoadConfig(fakeGetenv(map[string]string{
+		"DB_HOST":     "postgres-db-rw.x-db.svc.cluster.local",
+		"DB_USER":     "app",
+		"DB_PASSWORD": "secret-value",
+	}), "test")
+	if err == nil {
+		t.Fatal("expected an error for partial database config")
+	}
+	if !strings.Contains(err.Error(), "DB_NAME") {
+		t.Errorf("error should name the missing variable DB_NAME: %v", err)
+	}
+	if strings.Contains(err.Error(), "secret-value") {
+		t.Error("error must not contain the password value")
 	}
 }
