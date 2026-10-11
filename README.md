@@ -86,7 +86,7 @@ docker build -t service:local .
 docker run --rm -p 8080:8080 service:local
 ```
 
-The build runs `go vet` and `go test` first, so a failing test stops `docker build`, not just CI. The base image is `golang:1.25-alpine`, because the `pgx` dependency needs Go 1.25 or newer. The CI workflow's `setup-go` step still says 1.22; align it with `go.mod` (for example `go-version-file: app/go.mod`).
+The build runs `go vet` and `go test` first, so a failing test stops `docker build`, not just CI. The base image is `golang:1.25-alpine`, because the `pgx` dependency needs Go 1.25 or newer.
 
 ## How it gets deployed
 
