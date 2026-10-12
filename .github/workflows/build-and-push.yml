@@ -112,7 +112,7 @@ jobs:
         with:
           image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ steps.vars.outputs.sha_short }}
           format: 'cyclonedx'
-          output: 'sbom.json'
+          output: '${{ github.workspace }}/sbom.json'
 
       - name: Attest and Attach SBOM to Image
         run: |
