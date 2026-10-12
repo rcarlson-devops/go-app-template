@@ -37,7 +37,7 @@ jobs:
         uses: aquasecurity/trivy-action@master
         with:
           scan-type: 'fs'
-          scan-ref: '.'
+          scan-ref: './app'
           format: table
           exit-code: 1
           severity: 'HIGH,CRITICAL'
