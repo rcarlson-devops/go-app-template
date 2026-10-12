@@ -96,6 +96,7 @@ jobs:
           severity: 'HIGH,CRITICAL'
 
       - name: Push verified image to GHCR
+        id: push_image
         uses: docker/build-push-action@v6
         with:
           context: ./app
@@ -114,14 +115,20 @@ jobs:
           format: 'cyclonedx'
           output: '${{ github.workspace }}/sbom.json'
 
+      - name: Sign Docker Image
+        run: |
+          cosign sign \
+          --yes \
+          "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.push_image.outputs.digest }}"
+
       - name: Attest and Attach SBOM to Image
         run: |
           cosign attest \
           --yes \
           --predicate "${{ github.workspace }}/sbom.json" \
           --type cyclonedx \
-          "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ steps.vars.outputs.sha_short }}"
-
+          "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.push_image.outputs.digest }}"
+    
       - name: Update values-dev.yaml
         run: |
           yq -i '.image.tag = "sha-${{ steps.vars.outputs.sha_short }}"' ../environments/dev/values-dev.yaml
