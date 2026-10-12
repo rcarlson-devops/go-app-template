@@ -2,8 +2,12 @@ name: build-and-push
 
 # CI half of the GitOps loop. On every push to main that touches app/ (or this
 # file), it:
-#   1. vets and tests the Go app,
-#   2. builds the image and pushes it to GHCR as an immutable sha-<short-sha> tag,
+#   1. Runs a Trivy FileSystem scan
+#   2. vets and tests the Go app,
+#   3. builds the docker image
+#   4. Runs a Trivy Image scan
+#   5  Pushes the image to GHCR as an immutable sha-<short-sha> tag
+#   6. Generates a CycloneDX SBOM using Trivy
 #   3. commits that tag into environments/dev/values-dev.yaml.
 # Argo CD watches that file and rolls the new image out to the dev cluster; CI
 # never talks to the cluster. The bot commit only touches environments/, which
@@ -26,6 +30,8 @@ jobs:
     permissions:
       contents: write
       packages: write
+      id-token: write
+
     defaults:
       run:
         working-directory: ./app
@@ -55,6 +61,9 @@ jobs:
       - name: Set short SHA
         id: vars
         run: echo "sha_short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v4.1.2
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -97,7 +106,22 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ steps.vars.outputs.sha_short }}
 
           cache-from: type=gha
-  
+      
+      - name: Generate SBOM
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ steps.vars.outputs.sha_short }}
+          format: 'cyclonedx'
+          output: 'sbom.json'
+
+      - name: Attest and Attach SBOM to Image
+        run: |
+          cosign attest \
+          --yes \
+          --predicate sbom.json \
+          --type cyclonedx \
+          "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ steps.vars.outputs.sha_short }}"
+
       - name: Update values-dev.yaml
         run: |
           yq -i '.image.tag = "sha-${{ steps.vars.outputs.sha_short }}"' ../environments/dev/values-dev.yaml
