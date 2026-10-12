@@ -118,7 +118,7 @@ jobs:
         run: |
           cosign attest \
           --yes \
-          --predicate sbom.json \
+          --predicate "${{ github.workspace }}/sbom.json" \
           --type cyclonedx \
           "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ steps.vars.outputs.sha_short }}"
 
