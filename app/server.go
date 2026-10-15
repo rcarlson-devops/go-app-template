@@ -12,9 +12,10 @@ import (
 
 // Server wires configuration and readiness state to HTTP handlers.
 type Server struct {
-	cfg    Config
-	logger *slog.Logger
-	ready  atomic.Bool
+	cfg     Config
+	logger  *slog.Logger
+	ready   atomic.Bool
+	metrics *metrics
 
 	// dbCheck connects to the database and returns its name. It is nil when
 	// no database is configured. It is a field (rather than a direct call)
@@ -26,7 +27,7 @@ type Server struct {
 // SetReady(false) when shutdown begins so /readyz starts failing before the
 // process actually stops accepting connections.
 func NewServer(cfg Config, logger *slog.Logger) *Server {
-	s := &Server{cfg: cfg, logger: logger}
+	s := &Server{cfg: cfg, logger: logger, metrics: newMetrics()}
 	s.ready.Store(true)
 	if cfg.DatabaseConfigured() {
 		s.dbCheck = newPostgresChecker(cfg)
@@ -46,7 +47,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("/readyz", s.handleReadiness)
 	mux.HandleFunc("/internal/prestop", s.handlePreStop)
 	mux.HandleFunc("/db", s.handleDB)
-	return s.withLogging(mux)
+	mux.Handle("/metrics", s.metrics.handler())
+	return s.withLogging(s.withMetrics(mux))
 }
 
 type helloResponse struct {
@@ -164,7 +166,7 @@ func (r *statusRecorder) WriteHeader(code int) {
 // request logs.
 func (s *Server) withLogging(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/healthz" || r.URL.Path == "/readyz" || r.URL.Path == "/internal/prestop" {
+		if r.URL.Path == "/healthz" || r.URL.Path == "/readyz" || r.URL.Path == "/internal/prestop" || r.URL.Path == "/metrics" {
 			next.ServeHTTP(w, r)
 			return
 		}
