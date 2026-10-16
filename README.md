@@ -1,6 +1,6 @@
 # Service app
 
-The Go source for this service. CI builds it into a container image, and the platform deploys it to Kubernetes through Argo CD. Day to day, this directory is the part you change.
+The Go source for this service. CI builds it into a container image, and the platform deploys it to Kubernetes through Argo CD. Day to day, the `app/` directory is the part you change. Paths in the Layout table are relative to `app/`.
 
 It is built the way a platform-hosted service should be: structured JSON logging, Prometheus metrics, configuration that fails fast on bad values, separate liveness and readiness checks, and a graceful shutdown so rolling deploys don't drop requests.
 
@@ -29,7 +29,7 @@ It is built the way a platform-hosted service should be: structured JSON logging
 | `GET /metrics` | Prometheus metrics in the text format (see [Metrics](#metrics)) |
 | `GET /db` | Database check. `{"configured":false}` (200) with no database settings; `{"configured":true,"connected":true,"database":"<name>"}` (200) on success; `{"configured":true,"connected":false,"error":"connection failed"}` (503) on failure. The real error is logged, not returned. Unauthenticated, and it opens a new connection on every call |
 
-Requests are logged as one JSON line each. Probe and `preStop` requests are not logged.
+Requests are logged as one JSON line each. Probe, `preStop` and `/metrics` requests are not logged.
 
 ## Metrics
 
@@ -41,7 +41,7 @@ Requests are logged as one JSON line each. Probe and `preStop` requests are not 
 | `http_request_duration_seconds` | `method`, `route` | Histogram of request duration, using the client library's default buckets (`prometheus.DefBuckets`) |
 | Go runtime and process metrics | | From the client library's standard collectors |
 
-The `route` label is the route pattern the request matched, not the raw path. Probe, `preStop` and `/metrics` requests are not counted. The metrics are kept in a registry that the server owns, not in the client library's global one. In the platform, the shared Helm chart creates a ServiceMonitor that has Prometheus scrape this endpoint; see the platform repo.
+The `route` label is the route pattern the request matched, not the raw path, so a path that no specific route matches is counted under `/`, and `unmatched` is used if the mux sets no pattern. The `method` label is limited to the standard methods (GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS), and any other method is counted as `OTHER`. This keeps scanners from creating a new time series for every path or method they try. Probe, `preStop` and `/metrics` requests are not counted. The metrics are kept in a registry that the server owns, not in the client library's global one. In the platform, the shared Helm chart creates a ServiceMonitor that has Prometheus scrape this endpoint; see the platform repo.
 
 ## Configuration
 
@@ -91,7 +91,7 @@ cd app
 go test ./... -cover
 ```
 
-The tests cover configuration loading (including the database settings all set, none set, and partly set, where the password must not leak into the error), each handler, `/db` with no database, a working database and a failing one (the error must not leak), readiness staying healthy when the database is down, the readiness change during shutdown, which requests are logged, the `preStop` delay, and a full-server check over a real listener. The tests use a fake database check; none connects to a real Postgres.
+The tests cover configuration loading (including the database settings all set, none set, and partly set, where the password must not leak into the error), each handler, `/db` with no database, a working database and a failing one (the error must not leak), readiness staying healthy when the database is down, the readiness change during shutdown, which requests are logged, the metrics (counts by route, unknown paths sharing one route, unusual methods sharing one label, and probes and scrapes not being counted), the `preStop` delay, and a full-server check over a real listener. The tests use a fake database check; none connects to a real Postgres.
 
 ## Build and run the container
 
@@ -101,7 +101,7 @@ docker build -t service:local .
 docker run --rm -p 8080:8080 service:local
 ```
 
-The build runs `go vet` and `go test` first, so a failing test stops `docker build`, not just CI. The base image is `golang:1.25-alpine`, because the `pgx` dependency needs Go 1.25 or newer.
+The build runs `go vet` and `go test` first, so a failing test stops `docker build`, not just CI. The build stage uses `golang:1.27.2-alpine3.24`, the same Go version as `go.mod`, and the final image is `gcr.io/distroless/static-debian12:nonroot`.
 
 ## How it gets deployed
 
