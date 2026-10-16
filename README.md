@@ -2,7 +2,7 @@
 
 The Go source for this service. CI builds it into a container image, and the platform deploys it to Kubernetes through Argo CD. Day to day, this directory is the part you change.
 
-It is built the way a platform-hosted service should be: structured JSON logging, configuration that fails fast on bad values, separate liveness and readiness checks, and a graceful shutdown so rolling deploys don't drop requests.
+It is built the way a platform-hosted service should be: structured JSON logging, Prometheus metrics, configuration that fails fast on bad values, separate liveness and readiness checks, and a graceful shutdown so rolling deploys don't drop requests.
 
 ## Layout
 
@@ -12,9 +12,10 @@ It is built the way a platform-hosted service should be: structured JSON logging
 | `config.go` | Reads and validates configuration from environment variables |
 | `server.go` | HTTP handlers, request logging, readiness state |
 | `db.go` | The database check behind `/db` (one connection per call, using `pgx`) |
+| `metrics.go` | The Prometheus metrics: the request counter and the duration histogram |
 | `*_test.go` | Tests |
 | `Dockerfile` | Multi-stage build; the final image runs `/app/app` as a non-root user |
-| `go.mod`, `go.sum` | Go module `github.com/rcarlson-devops/app` (Go 1.25) and its dependencies. Commit both: the Docker build copies them |
+| `go.mod`, `go.sum` | Go module `github.com/rcarlson-devops/app` (Go 1.27.2) and its dependencies. Commit both: the Docker build copies them |
 
 ## Endpoints
 
@@ -25,9 +26,22 @@ It is built the way a platform-hosted service should be: structured JSON logging
 | `GET /healthz` | Liveness: `ok` with status 200 while the process is alive |
 | `GET /readyz` | Readiness: `ok` normally; `503` from the moment shutdown begins |
 | `GET /internal/prestop` | Used by Kubernetes' `preStop` hook only; waits `PRESTOP_DELAY_SECONDS` and returns 200 |
+| `GET /metrics` | Prometheus metrics in the text format (see [Metrics](#metrics)) |
 | `GET /db` | Database check. `{"configured":false}` (200) with no database settings; `{"configured":true,"connected":true,"database":"<name>"}` (200) on success; `{"configured":true,"connected":false,"error":"connection failed"}` (503) on failure. The real error is logged, not returned. Unauthenticated, and it opens a new connection on every call |
 
 Requests are logged as one JSON line each. Probe and `preStop` requests are not logged.
+
+## Metrics
+
+`GET /metrics` serves Prometheus metrics on the same port as the other routes.
+
+| Metric | Labels | What it is |
+|---|---|---|
+| `http_requests_total` | `method`, `route`, `status` | Count of requests |
+| `http_request_duration_seconds` | `method`, `route` | Histogram of request duration, using the client library's default buckets (`prometheus.DefBuckets`) |
+| Go runtime and process metrics | | From the client library's standard collectors |
+
+The `route` label is the route pattern the request matched, not the raw path. Probe, `preStop` and `/metrics` requests are not counted. The metrics are kept in a registry that the server owns, not in the client library's global one. In the platform, the shared Helm chart creates a ServiceMonitor that has Prometheus scrape this endpoint; see the platform repo.
 
 ## Configuration
 
@@ -65,6 +79,7 @@ In another terminal:
 curl localhost:8080/
 curl localhost:8080/version
 curl localhost:8080/readyz
+curl localhost:8080/metrics
 ```
 
 Try other settings with `ENVIRONMENT=dev PORT=9090 go run .`. Press Ctrl+C to see the shutdown messages. `curl localhost:8080/db` returns `{"configured":false}` unless you set all four `DB_*` variables.
