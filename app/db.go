@@ -23,13 +23,19 @@ const (
 // the database does not exist yet, and a database outage is only ever
 // visible through /db.
 func newPostgresChecker(cfg Config) func(ctx context.Context) (string, error) {
+	// Instantiate url.Values to handle query parameters cleanly
+	q := url.Values{}
+	q.Set("sslmode", "verify-full")
+	q.Set("sslrootcert", "/etc/pg-ca/ca.crt")
+
 	// Build the connection URL with net/url so special characters in the
 	// password or user name are escaped correctly.
 	u := url.URL{
-		Scheme: "postgres",
-		User:   url.UserPassword(cfg.DBUser, cfg.DBPassword),
-		Host:   net.JoinHostPort(cfg.DBHost, dbPort),
-		Path:   "/" + cfg.DBName,
+		Scheme:   "postgres",
+		User:     url.UserPassword(cfg.DBUser, cfg.DBPassword),
+		Host:     net.JoinHostPort(cfg.DBHost, dbPort),
+		Path:     "/" + cfg.DBName,
+		RawQuery: q.Encode(),
 	}
 	dsn := u.String()
 
