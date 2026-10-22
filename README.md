@@ -15,7 +15,7 @@ It is built the way a platform-hosted service should be: structured JSON logging
 | `metrics.go` | The Prometheus metrics: the request counter and the duration histogram |
 | `*_test.go` | Tests |
 | `Dockerfile` | Multi-stage build; the final image runs `/app/app` as a non-root user |
-| `go.mod`, `go.sum` | Go module `github.com/rcarlson-devops/app` (Go 1.27.2) and its dependencies. Commit both: the Docker build copies them |
+| `go.mod`, `go.sum` | Go module `github.com/rcarlson-platform/app` (Go 1.27.2) and its dependencies. Commit both: the Docker build copies them |
 
 ## Endpoints
 
@@ -115,4 +115,4 @@ CI never talks to the cluster directly.
 ## What not to edit by hand
 
 - `environments/dev/values-dev.yaml`: CI overwrites the image fields on every build.
-- Deployment settings (the Helm chart, the Argo CD Application, the database) belong to the platform, not this repository. See the platform repo: https://github.com/rcarlson-devops/self-service-idp
+- Deployment settings (the Helm chart, the Argo CD Application, the database) belong to the platform, not this repository. See the platform repo: https://github.com/rcarlson-platform/self-service-idp
