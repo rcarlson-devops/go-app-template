@@ -15,7 +15,7 @@ It is built the way a platform-hosted service should be: structured JSON logging
 | `metrics.go` | The Prometheus metrics: the request counter and the duration histogram |
 | `*_test.go` | Tests |
 | `Dockerfile` | Multi-stage build; the final image runs `/app/app` as a non-root user |
-| `go.mod`, `go.sum` | Go module `github.com/rcarlson-platform/app` (Go 1.27.2) and its dependencies. Commit both: the Docker build copies them |
+| `go.mod`, `go.sum` | Go module `github.com/rcarlson-platform/app` (Go 1.27.3) and its dependencies. Commit both: the Docker build copies them |
 
 ## Endpoints
 
@@ -101,7 +101,7 @@ docker build -t service:local .
 docker run --rm -p 8080:8080 service:local
 ```
 
-The build runs `go vet` and `go test` first, so a failing test stops `docker build`, not just CI. The build stage uses `golang:1.27.2-alpine3.24`, the same Go version as `go.mod`, and the final image is `gcr.io/distroless/static-debian12:nonroot`.
+The build runs `go vet` and `go test` first, so a failing test stops `docker build`, not just CI. The build stage uses `golang:1.27.3-alpine3.24`, the same Go version as `go.mod`, and the final image is `gcr.io/distroless/static-debian12:nonroot`.
 
 ## How it gets deployed
 
