@@ -1,4 +1,4 @@
-module github.com/rcarlson-devops/app
+module github.com/rcarlson-platform/app
 
 go 1.27.2
 
